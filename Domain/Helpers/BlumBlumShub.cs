@@ -4,43 +4,33 @@ namespace Domain.Helpers;
 
 public class BlumBlumShub
 {
-    public static readonly BigInteger p = 3263849;
-    public static readonly BigInteger q = 1302498943;
-    public static readonly BigInteger m = p*q;
-
-    private static BigInteger Next(BigInteger prev) {
+    private static int Next(int prev, int m) {
         return prev * prev % m;
     }
 
-    public void ImportParams(BigInteger p, BigInteger q)
-    {
-        var P = p;
-        var Q = q;
-    }
-
-    private static int Parity(BigInteger n) {
-        BigInteger q = n;
-        BigInteger count = 0;
-        while (q != BigInteger.Zero) {
-            count += q & BigInteger.One;
+    private static int Parity(int n) {
+        var q = n;
+        var count = 0;
+        while (q != 0) {
+            count += q & 1;
             q >>= 1;
         }
-        return ((count & BigInteger.One) != BigInteger.Zero) ? 1 : 0; // even parity
+        return ((count & 1) != 0) ? 1 : 0; // even parity
     }
 
-    private static int LSB(BigInteger n) {
-        return ((n & BigInteger.One) != BigInteger.Zero) ? 1 : 0;
+    private static int LSB(int n) {
+        return ((n & 1) != 0) ? 1 : 0;
     }
 
-    public int GetBit()
+    public static int GetBit(int m)
     {
-        BigInteger seed = 6367859;
+        var seed = 6367859;
 
         int[] bits = new int[100];
 
-        BigInteger xprev = seed;
+        var xprev = seed;
         for(int k = 0; k != 100; ++k) {
-            BigInteger xnext = Next(xprev);
+            var xnext = Next(xprev, m);
             int bit = Parity(xnext); // extract random bit from generated BBS number using parity,
             // or just int bit = LSB(xnext);
 
@@ -50,5 +40,15 @@ public class BlumBlumShub
         }
 
         return bits[0];
+    }
+
+    public static byte[] Encrypt(byte[] msg, int m, int id)
+    {
+        var bit = GetBit(m);
+        
+        msg = msg.Concat(BitConverter.GetBytes(bit)).ToArray();
+        msg = msg.Concat(BitConverter.GetBytes(id)).ToArray();
+
+        return UserEncryptor.Encrypt2(msg);
     }
 }

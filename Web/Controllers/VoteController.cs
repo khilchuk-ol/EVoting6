@@ -1,3 +1,4 @@
+using EVoting6.Web.Models;
 using EVoting6.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,18 +22,18 @@ public class VoteController : Controller
     
     [HttpPost]
     [Route("vote/")]
-    public IActionResult Vote([FromBody]int candidate)
+    public IActionResult Vote([FromBody]VoteModel vote)
     {
         var token = Request.Headers.Authorization.First();
 
         try
         {
-            var msg = _clientVotingService.CreateMessage(token, candidate);
+            var msg = _clientVotingService.CreateMessage(token, vote.Candidate);
             _clientVotingService.SendBulletin(msg);
         }
         catch(Exception e)
         {
-            return BadRequest(e);
+            return BadRequest(e.Message);
         }
 
         return Ok();
@@ -48,7 +49,7 @@ public class VoteController : Controller
         }
         catch (Exception e)
         {
-            return BadRequest(e);
+            return BadRequest(e.Message);
         }
     }
 }

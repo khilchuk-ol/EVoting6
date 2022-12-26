@@ -30,7 +30,7 @@ public class UserController : Controller
         }
         catch (Exception e)
         {
-            return BadRequest(e);
+            return BadRequest(e.Message);
         }
     }
     
@@ -44,7 +44,7 @@ public class UserController : Controller
         }
         catch (Exception e)
         {
-            return BadRequest(e);
+            return BadRequest(e.Message);
         }
     }
 }

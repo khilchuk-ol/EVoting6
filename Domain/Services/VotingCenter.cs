@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Data;
 using Domain.Helpers;
 
@@ -6,11 +5,9 @@ namespace Domain.Services;
 
 public class VotingCenter
 {
-    private Dictionary<int, RSAParameters> _votersKeys = new();
+    private Dictionary<int, (int p, int q)> _votersKeys = new();
 
     private List<byte[]> bulletins = new();
-
-    private RSA rsa = RSA.Create(2048);
 
     private DataProviderService _dataProviderService;
 
@@ -21,22 +18,23 @@ public class VotingCenter
 
     public void GenerateKeys(List<int> ids)
     {
+        var primes = PrimesGenerator.GeneratePrimesNaive(ids.Count * 2, 3, 5);
+        var pos = 0;
+        
         foreach (var id in ids)
         {
             if (_votersKeys.ContainsKey(id))
             {
                 throw new Exception("not unique id");
             }
-
-            var rsa = RSA.Create();
             
-            _votersKeys.Add(id, rsa.ExportParameters(true));
+            _votersKeys.Add(id, (primes[pos++], primes[pos++]));
         }
     }
 
     public List<string> GetTokens()
     {
-        return _votersKeys.Select(pair => TokenHelper.GenerateToken(pair.Key, pair.Value)).ToList();
+        return _votersKeys.Select(pair => TokenHelper.GenerateToken(pair.Key, pair.Value.p * pair.Value.q)).ToList();
     }
 
     public void AcceptVote(byte[] msg)
@@ -53,7 +51,7 @@ public class VotingCenter
         {
             var (id, candidate) = GetVoteResult(msg);
 
-            if (ids.Contains(id)) throw new Exception("user already voted");
+            if (ids.Contains(id)) continue; // voter already voted
 
             if (res.ContainsKey(candidate))
             {
@@ -70,60 +68,44 @@ public class VotingCenter
 
     private (int id, int candidate) GetVoteResult(byte[] msg)
     {
-        var decrypted = Decrypt(msg);
+        var decrypted = UserEncryptor.Decrypt2(msg);
+        var decryptedWithoutId = decrypted;
 
-        var bbs = new BlumBlumShub();
-        var bit = BitConverter.GetBytes(bbs.GetBit());
+        var keys = (-1, -1);
 
-        if (bit.Except(decrypted).Any())
+        foreach (var pair in _votersKeys)
         {
-            throw new Exception("mismatch");
-        }
+            var idBytes = BitConverter.GetBytes(pair.Key);
 
-        var pos1 = -1;
-        var pos2 = -1;
+            var last = decrypted.TakeLast(idBytes.Length);
 
-        for (int i = 0; i < decrypted.Length; i++)
-        {
-            if (decrypted.Skip(i).Take(bit.Length).ToArray().Equals(bit))
+            if (last.SequenceEqual(idBytes))
             {
-                pos1 = i;
-                pos2 = i + bit.Length;
+                keys = pair.Value;
 
+                decryptedWithoutId = decrypted.SkipLast(idBytes.Length).ToArray();
+                
                 break;
             }
         }
 
-        if (pos1 == -1 || pos2 == -1)
+        if (keys.Item1 == -1 || keys.Item2 == -1)
+        {
+            throw new Exception("voter not found");
+        }
+
+        var bit = BitConverter.GetBytes(BlumBlumShub.GetBit(keys.Item1 * keys.Item2));
+
+        if (!decryptedWithoutId.TakeLast(bit.Length).SequenceEqual(bit))
         {
             throw new Exception("mismatch");
         }
-        
-        var id = BitConverter.ToInt32(decrypted.Skip(pos2).ToArray());
 
-        if (!_votersKeys.ContainsKey(id))
-        {
-            throw new Exception("invalid id");
-        }
-
-        var rsa = new RSACryptoServiceProvider();
-        rsa.ImportParameters(_votersKeys[id]);
-
-        var bulletinEncrypted = decrypted.Take(pos1).ToArray();
-        var bulletinDecrypted = rsa.Decrypt(bulletinEncrypted, RSAEncryptionPadding.Pkcs1);
+        var bulletinEncrypted = decryptedWithoutId.SkipLast(bit.Length).ToArray();
+        var bulletinDecrypted = UserEncryptor.Decrypt(bulletinEncrypted);
 
         var bulletin = _dataProviderService.UnwrapBulletinId(BitConverter.ToInt32(bulletinDecrypted));
 
         return (bulletin.UserId, bulletin.CandidateId);
-    }
-
-    public byte[] Encrypt(byte[] msg)
-    {
-        return rsa.Encrypt(msg, RSAEncryptionPadding.Pkcs1);
-    }
-    
-    public byte[] Decrypt(byte[] msg)
-    {
-        return rsa.Decrypt(msg, RSAEncryptionPadding.Pkcs1);
     }
 }
