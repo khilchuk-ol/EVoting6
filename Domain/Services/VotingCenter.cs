@@ -61,6 +61,8 @@ public class VotingCenter
             {
                 res.Add(candidate, 1);
             }
+
+            ids.Add(id);
         }
 
         return res;
